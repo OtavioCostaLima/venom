@@ -1,17 +1,21 @@
-/* eslint-disable no-undef */
 export async function checkNumberStatus(id, conn = false) {
   try {
-    const err = {
-      error: 404
-    };
-
+    const err = { error: 404 };
     const connection =
       window.Store &&
       window.Store.State &&
       window.Store.State.Socket &&
       window.Store.State.Socket.state
         ? window.Store.State.Socket.state
-        : '';
+        : undefined;
+    const checkType = WAPI.sendCheckType(id);
+    if (!!checkType && checkType.status === 404) {
+      Object.assign(err, {
+        text: checkType.text,
+        numberExists: null
+      });
+      throw err;
+    }
 
     if (conn === true) {
       if (connection !== 'CONNECTED') {
@@ -23,12 +27,12 @@ export async function checkNumberStatus(id, conn = false) {
         throw err;
       }
     }
-    const lid = await WAPI.getChat(id);
-    if (lid) {
-      return await WPP.contact
-        .queryExists(lid.id)
+
+    if (WAPI.isBeta()) {
+      return await Store.checkNumberBeta
+        .queryExists(new Store.WidFactory.createWid(id))
         .then((result) => {
-          if (typeof result === 'object') {
+          if (!!result && typeof result === 'object') {
             const data = {
               status: 200,
               numberExists: true,
@@ -52,12 +56,21 @@ export async function checkNumberStatus(id, conn = false) {
             text: err
           });
         });
-    } else {
-      throw Object.assign(err, {
-        connection: connection,
-        numberExists: false
-      });
     }
+
+    const result = await Store.checkNumber.queryExist(id);
+    if (result.status === 200) {
+      return {
+        status: result.status,
+        numberExists: true,
+        id: result.jid
+      };
+    }
+    return {
+      status: result.status,
+      numberExists: false,
+      text: `The number does not exist`
+    };
   } catch (e) {
     return {
       status: e.error,
